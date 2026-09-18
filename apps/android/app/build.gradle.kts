@@ -15,10 +15,17 @@ val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-fun oauthClientId(default: String): String =
-    localProps.getProperty("OAUTH_CLIENT_ID")
-        ?: providers.gradleProperty("OAUTH_CLIENT_ID").orNull
-        ?: default
+fun configuredProperty(key: String, default: String = ""): String =
+    localProps.getProperty(key) ?: providers.gradleProperty(key).orNull ?: default
+
+fun oauthClientId(default: String): String = configuredProperty("OAUTH_CLIENT_ID", default)
+
+fun buildConfigString(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+val oauthCallbackScheme = configuredProperty("OAUTH_CALLBACK_SCHEME", "orangecloud")
+val oauthCallbackHost = configuredProperty("OAUTH_CALLBACK_HOST", "oauth")
+val officialOAuthRedirectUri = "https://o-c.do/oauth/callback"
 
 // FCM（推送）配置：官方 play/direct 构建从 local.properties / -P 注入；缺省空串 = 推送不初始化（优雅降级）。
 fun buildProp(key: String, default: String = ""): String =
@@ -47,8 +54,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // OAuth 回调（Web 后端 302 跳回的自定义 scheme）
-        manifestPlaceholders["oauthScheme"] = "orangecloud"
-        manifestPlaceholders["oauthHost"] = "oauth"
+        manifestPlaceholders["oauthScheme"] = oauthCallbackScheme
+        manifestPlaceholders["oauthHost"] = oauthCallbackHost
+        buildConfigField("String", "OAUTH_CALLBACK_SCHEME", buildConfigString(oauthCallbackScheme))
+        buildConfigField("String", "OAUTH_CALLBACK_HOST", buildConfigString(oauthCallbackHost))
 
         // FCM（推送）：4 项来自 Firebase 项目（Web/Android 应用）。空串 = 推送不初始化。
         buildConfigField("String", "FCM_PROJECT_ID", "\"${buildProp("FCM_PROJECT_ID")}\"")
@@ -63,7 +72,12 @@ android {
             dimension = "distribution"
             buildConfigField("boolean", "IS_OSS", "false")
             buildConfigField("boolean", "IS_DIRECT", "false")
-            buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId(officialOAuthClientId)}\"")
+            buildConfigField("String", "OAUTH_CLIENT_ID", buildConfigString(oauthClientId(officialOAuthClientId)))
+            buildConfigField(
+                "String",
+                "OAUTH_REDIRECT_URI",
+                buildConfigString(configuredProperty("OAUTH_REDIRECT_URI", officialOAuthRedirectUri)),
+            )
         }
         create("oss") {
             dimension = "distribution"
@@ -72,7 +86,9 @@ android {
             buildConfigField("boolean", "IS_OSS", "true")
             buildConfigField("boolean", "IS_DIRECT", "false")
             // oss 默认不带官方 Client；自编译者用 local.properties 填
-            buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId("")}\"")
+            buildConfigField("String", "OAUTH_CLIENT_ID", buildConfigString(oauthClientId("")))
+            // oss 默认不带官方回调；自编译者必须填自建 relay 的 HTTPS URL
+            buildConfigField("String", "OAUTH_REDIRECT_URI", buildConfigString(configuredProperty("OAUTH_REDIRECT_URI")))
             // oss 不带官方 FCM 配置（即便 local.properties 有也清空，避免官方推送凭证进开源构建）
             buildConfigField("String", "FCM_PROJECT_ID", "\"\"")
             buildConfigField("String", "FCM_APP_ID", "\"\"")
@@ -87,7 +103,12 @@ android {
             versionNameSuffix = "-direct"
             buildConfigField("boolean", "IS_OSS", "false")
             buildConfigField("boolean", "IS_DIRECT", "true")
-            buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId(officialOAuthClientId)}\"")
+            buildConfigField("String", "OAUTH_CLIENT_ID", buildConfigString(oauthClientId(officialOAuthClientId)))
+            buildConfigField(
+                "String",
+                "OAUTH_REDIRECT_URI",
+                buildConfigString(configuredProperty("OAUTH_REDIRECT_URI", officialOAuthRedirectUri)),
+            )
             // direct 不走 FCM（Firebase 只注册了 play 包名；FCM App ID 绑定包名，direct 用
             // play 的会不合规且国内环境 FCM 不可达）——清空即推送中心优雅降级，其余功能不受影响
             buildConfigField("String", "FCM_PROJECT_ID", "\"\"")

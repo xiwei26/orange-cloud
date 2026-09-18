@@ -45,9 +45,9 @@ be merged — no exceptions, however small the change.
 ### Building the Android app
 
 Native Kotlin + Jetpack Compose in [`apps/android/`](apps/android/README.md)
-(min API 31, target/compile API 36).
+(min API 26, target/compile API 36).
 
-1. JDK 17 + Android SDK (`android-36`). Open `apps/android/` in Android
+1. JDK 21 + Android SDK (`android-36`). Open `apps/android/` in Android
    Studio, or use the bundled Gradle wrapper directly: `./gradlew
    :app:assembleOssDebug`.
 2. Two product flavors: `play` (Google Play, with Billing) and `oss`
@@ -56,8 +56,10 @@ Native Kotlin + Jetpack Compose in [`apps/android/`](apps/android/README.md)
 3. **OAuth client**: the `play` flavor embeds the official client ID (a
    public PKCE identifier, same value as iOS). The `oss` flavor ships
    empty — set your own in `apps/android/local.properties`
-   (`OAUTH_CLIENT_ID=…`) and deploy your own callback relay; the
-   official client is not for third-party builds.
+   (`OAUTH_CLIENT_ID=…` and `OAUTH_REDIRECT_URI=https://…/oauth/callback`)
+   and deploy your own callback relay; the official client and relay are not
+   for third-party builds. Both values are injected through `BuildConfig` and
+   remain in the ignored `local.properties` file.
 
 See [`apps/android/README.md`](apps/android/README.md) for the full
 build matrix and architecture.
@@ -113,9 +115,9 @@ build matrix and architecture.
 ### 编译 Android 版
 
 原生 Kotlin + Jetpack Compose，位于 [`apps/android/`](apps/android/README.md)
-（最低 API 31，目标 / 编译 API 36）。
+（最低 API 26，目标 / 编译 API 36）。
 
-1. JDK 17 + Android SDK（`android-36`）。用 Android Studio 打开
+1. JDK 21 + Android SDK（`android-36`）。用 Android Studio 打开
    `apps/android/`，或直接用内置的 Gradle Wrapper：`./gradlew
    :app:assembleOssDebug`。
 2. 两个产品风味：`play`（Google Play，带 Billing）与 `oss`（自编译、
@@ -123,7 +125,9 @@ build matrix and architecture.
 3. **OAuth Client**：`play` 风味内置官方 Client ID（OAuth PKCE 下为
    公开标识符，与 iOS 同值）；`oss` 风味默认空串，请在
    `apps/android/local.properties` 填入自建 Client（`OAUTH_CLIENT_ID=…`）
-   并部署自己的回调中转——官方 Client 不向第三方构建开放。
+   与 relay（`OAUTH_REDIRECT_URI=https://…/oauth/callback`），并部署自己的
+   回调中转——官方 Client 与官方中转不向第三方构建开放。两项均经
+   `BuildConfig` 注入，只保存在被 Git 忽略的 `local.properties`。
 
 完整构建矩阵与架构见 [`apps/android/README.md`](apps/android/README.md)。
 

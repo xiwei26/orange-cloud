@@ -1,19 +1,19 @@
 # Orange Cloud — Android
 
 原生 Kotlin + Jetpack Compose 客户端。设计与价值同源于 iOS 版，功能与交互以 Android 原生为先（不追求与 iOS 一一对应）。
-最低 Android 12（API 31），目标 / 编译 API 36。
+最低 Android 8.0（API 26），目标 / 编译 API 36。
 
 ## 先决条件
 
-- **JDK 17**
+- **JDK 21**（Gradle toolchain 与 AGP 要求）
 - **Android SDK**（platform `android-36` + 对应 build-tools）
 
 用 Android Studio 打开 `apps/android/` 会自动配齐 SDK；或手动安装命令行工具：
 
 ```bash
-# JDK 17（Homebrew 示例）
-brew install --cask temurin@17
-export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+# JDK 21（Homebrew 示例）
+brew install --cask temurin@21
+export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
 
 # Android SDK（命令行工具，无需 Android Studio）
 brew install --cask android-commandlinetools
@@ -47,14 +47,22 @@ cd apps/android
 
 ## OAuth Client 注入
 
-`OAUTH_CLIENT_ID` 经 Gradle 注入到 `BuildConfig`：
+`OAUTH_CLIENT_ID` 和 `OAUTH_REDIRECT_URI` 经 Gradle 注入到 `BuildConfig`：
 
 - `play` 风味内置官方 Client ID——OAuth PKCE 下它是公开标识符而非机密，与 iOS `OAuthConfig.swift` 同值。
 - `oss` 风味默认空串。自编译者须在 `apps/android/local.properties` 填入自建的 Client ID：
   ```properties
   OAUTH_CLIENT_ID=你自建的_client_id
+  OAUTH_REDIRECT_URI=https://你的回调域名/oauth/callback
+  # 以下两项保持默认即可；若修改，relay 必须跳转到相同的 scheme/host
+  OAUTH_CALLBACK_SCHEME=orangecloud
+  OAUTH_CALLBACK_HOST=oauth
   ```
-  并部署自己的回调中转——官方 Client 与 `o-c.do` 中转不向第三方构建开放，详见根目录 [`CONTRIBUTING.md`](../../CONTRIBUTING.md)。
+  `OAUTH_REDIRECT_URI` 必须与 Cloudflare OAuth Client 中登记的 redirect URI 完全一致。
+  relay 只需把 `code` 与 `state` 302 到 `${OAUTH_CALLBACK_SCHEME}://${OAUTH_CALLBACK_HOST}/callback`，
+  不存 code、不换 Token；官方 Client 与 `o-c.do` 中转不向第三方构建开放，详见根目录 [`CONTRIBUTING.md`](../../CONTRIBUTING.md)。
+
+`local.properties` 已被 Git 忽略。不要把 Client Secret、Access Token、Refresh Token、Wrangler 登录凭证或签名密钥写入仓库；本项目的 OAuth PKCE Client ID 是公开标识符，但个人构建仍只保存在该本地文件中。
 
 ## 架构
 
