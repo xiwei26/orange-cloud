@@ -5,7 +5,7 @@ The landing page and OAuth callback relay for [Orange Cloud](https://github.com/
 ## What this app does
 
 - **Landing page** in five locales (en / zh-Hans / zh-Hant / zh-HK / ja) via `next-intl`, with `localePrefix: "as-needed"` — English lives at `/`, other locales at `/zh-Hans` etc. Also serves `/privacy`, `/terms`, and `/contact`, which the iOS app links to.
-- **OAuth callback relay** at `/oauth/callback` ([route.ts](src/app/oauth/callback/route.ts)): Cloudflare's OAuth only accepts `https` redirect URIs, so this route 302-redirects the authorization `code` and `state` straight to the iOS app's custom scheme (`orangecloud://oauth/callback`). It stores nothing and never exchanges the code — the token exchange and `state` validation happen on-device, secured by PKCE.
+- **OAuth callback relay** at `/oauth/callback` ([route.ts](src/app/oauth/callback/route.ts)): Cloudflare's OAuth only accepts `https` redirect URIs, so this route 302-redirects the authorization `code` and `state` straight to the app's custom scheme (`orangecloud://oauth/callback`). It stores nothing and never exchanges the code — the token exchange and `state` validation happen on-device, secured by PKCE. Forks should deploy this relay under their own Cloudflare account/domain and register that exact HTTPS URL in their own OAuth Client. Set the non-secret Wrangler variable `OAUTH_APP_CALLBACK` if the Android build uses a custom scheme/host; otherwise the default above is used.
 
 ## Stack
 
@@ -67,4 +67,4 @@ pnpm cf-typegen   # regenerate cloudflare-env.d.ts after changing wrangler.jsonc
 pnpm deploy       # opennextjs-cloudflare build && deploy
 ```
 
-The official deployment uses the custom domain `o-c.do` (configured in `wrangler.jsonc` `routes`). For your own fork: change the `name` and `routes` in [`wrangler.jsonc`](wrangler.jsonc), deploy under your own Cloudflare account, then register `https://<your-domain>/oauth/callback` as the redirect URI of **your own** Cloudflare OAuth client (see [CONTRIBUTING.md](../../CONTRIBUTING.md)).
+The official deployment uses the custom domain `o-c.do` (configured in `wrangler.jsonc` `routes`). For your own fork: use a separate Wrangler config or change the `name` and `routes` in [`wrangler.jsonc`](wrangler.jsonc) before deploying under your own Cloudflare account. Register `https://<your-domain>/oauth/callback` as the redirect URI of **your own** Cloudflare OAuth client, then set the same URL as `OAUTH_REDIRECT_URI` in `apps/android/local.properties` (see [CONTRIBUTING.md](../../CONTRIBUTING.md)). Never deploy a fork with the official `o-c.do` route still selected.
