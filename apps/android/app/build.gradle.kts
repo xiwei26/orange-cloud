@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -15,22 +16,51 @@ val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-fun oauthClientId(default: String): String =
-    localProps.getProperty("OAUTH_CLIENT_ID")
-        ?: providers.gradleProperty("OAUTH_CLIENT_ID").orNull
-        ?: default
+fun configuredProperty(key: String, default: String = ""): String =
+    localProps.getProperty(key) ?: providers.gradleProperty(key).orNull ?: default
+
+fun oauthClientId(default: String): String = configuredProperty("OAUTH_CLIENT_ID", default)
+
+fun buildConfigString(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+val oauthCallbackScheme = configuredProperty("OAUTH_CALLBACK_SCHEME", "orangecloud")
+val oauthCallbackHost = configuredProperty("OAUTH_CALLBACK_HOST", "oauth")
+val officialOAuthRedirectUri = "https://o-c.do/oauth/callback"
 
 // FCM（推送）配置：官方 play/direct 构建从 local.properties / -P 注入；缺省空串 = 推送不初始化（优雅降级）。
 fun buildProp(key: String, default: String = ""): String =
     localProps.getProperty(key) ?: providers.gradleProperty(key).orNull ?: default
 
-// 发布签名（upload key）。keystore.properties 与 .jks 均不入库（见 .gitignore）；
-// 缺文件时 release 退化为未签名，保证全新 clone / CI 仍可构建。
+// 发布签名。两个渠道**不是一把密钥**，原因见 ~/keys/SIGNING-INVENTORY.md §3.1：
+//
+//   direct → 官网直装包的【最终签名】。已对外分发，包名与签名永久绑死，**这一条永远不能换**。
+//            用个人主体那把（keystore.properties 指向 ~/keys/identities/personal/android/）。
+//   play   → Play 的【上传密钥】，已在 Play Console 重置为柘家统一发行密钥（SHA-1 B0:C4:18:52…，
+//            2026-10-05 在 Play 管理中心核对）。用户无感：Play 分发用谷歌自己的密钥。
+//
+// 口令文件都不入库；缺文件时 release 退化为未签名，保证全新 clone / CI 仍可构建。
+fun expandHome(path: String): File =
+    if (path.startsWith("~/")) File(System.getProperty("user.home"), path.removePrefix("~/"))
+    else File(path)
+
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
 val hasReleaseKeystore = keystoreProps.getProperty("storeFile") != null
+
+/** 柘家科技统一发行密钥：play 渠道的 Play 上传密钥 */
+val zhejiaProps: Properties? = run {
+    val configured = (providers.gradleProperty("zhejiaSigningProperties").orNull
+        ?: System.getenv("ZHEJIA_SIGNING_PROPERTIES")
+        ?: "~/keys/identities/zhejia/android/zhejia-release.properties")
+    val f = expandHome(configured)
+    if (!f.isFile) return@run null
+    val props = Properties().apply { f.inputStream().use { load(it) } }
+    val store = props.getProperty("storeFile")?.let(::expandHome)
+    if (store == null || !store.isFile) null else props
+}
 
 android {
     namespace = "jiamin.chen.orangecloud"
@@ -42,13 +72,15 @@ android {
         // 实况通知促升(API36) 均 if-guard 渐进增强，Android 8–11 落固定品牌调色板与常驻通知回退。
         minSdk = 26
         targetSdk = 36
-        versionCode = 26
-        versionName = "2.1.2"
+        versionCode = 28
+        versionName = "2.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // OAuth 回调（Web 后端 302 跳回的自定义 scheme）
-        manifestPlaceholders["oauthScheme"] = "orangecloud"
-        manifestPlaceholders["oauthHost"] = "oauth"
+        manifestPlaceholders["oauthScheme"] = oauthCallbackScheme
+        manifestPlaceholders["oauthHost"] = oauthCallbackHost
+        buildConfigField("String", "OAUTH_CALLBACK_SCHEME", buildConfigString(oauthCallbackScheme))
+        buildConfigField("String", "OAUTH_CALLBACK_HOST", buildConfigString(oauthCallbackHost))
 
         // FCM（推送）：4 项来自 Firebase 项目（Web/Android 应用）。空串 = 推送不初始化。
         buildConfigField("String", "FCM_PROJECT_ID", "\"${buildProp("FCM_PROJECT_ID")}\"")
@@ -63,7 +95,12 @@ android {
             dimension = "distribution"
             buildConfigField("boolean", "IS_OSS", "false")
             buildConfigField("boolean", "IS_DIRECT", "false")
-            buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId(officialOAuthClientId)}\"")
+            buildConfigField("String", "OAUTH_CLIENT_ID", buildConfigString(oauthClientId(officialOAuthClientId)))
+            buildConfigField(
+                "String",
+                "OAUTH_REDIRECT_URI",
+                buildConfigString(configuredProperty("OAUTH_REDIRECT_URI", officialOAuthRedirectUri)),
+            )
         }
         create("oss") {
             dimension = "distribution"
@@ -72,7 +109,9 @@ android {
             buildConfigField("boolean", "IS_OSS", "true")
             buildConfigField("boolean", "IS_DIRECT", "false")
             // oss 默认不带官方 Client；自编译者用 local.properties 填
-            buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId("")}\"")
+            buildConfigField("String", "OAUTH_CLIENT_ID", buildConfigString(oauthClientId("")))
+            // oss 默认不带官方回调；自编译者必须填自建 relay 的 HTTPS URL
+            buildConfigField("String", "OAUTH_REDIRECT_URI", buildConfigString(configuredProperty("OAUTH_REDIRECT_URI")))
             // oss 不带官方 FCM 配置（即便 local.properties 有也清空，避免官方推送凭证进开源构建）
             buildConfigField("String", "FCM_PROJECT_ID", "\"\"")
             buildConfigField("String", "FCM_APP_ID", "\"\"")
@@ -87,7 +126,12 @@ android {
             versionNameSuffix = "-direct"
             buildConfigField("boolean", "IS_OSS", "false")
             buildConfigField("boolean", "IS_DIRECT", "true")
-            buildConfigField("String", "OAUTH_CLIENT_ID", "\"${oauthClientId(officialOAuthClientId)}\"")
+            buildConfigField("String", "OAUTH_CLIENT_ID", buildConfigString(oauthClientId(officialOAuthClientId)))
+            buildConfigField(
+                "String",
+                "OAUTH_REDIRECT_URI",
+                buildConfigString(configuredProperty("OAUTH_REDIRECT_URI", officialOAuthRedirectUri)),
+            )
             // direct 不走 FCM（Firebase 只注册了 play 包名；FCM App ID 绑定包名，direct 用
             // play 的会不合规且国内环境 FCM 不可达）——清空即推送中心优雅降级，其余功能不受影响
             buildConfigField("String", "FCM_PROJECT_ID", "\"\"")
@@ -100,21 +144,38 @@ android {
     signingConfigs {
         if (hasReleaseKeystore) {
             create("release") {
-                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storeFile = expandHome(keystoreProps.getProperty("storeFile"))
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
             }
         }
+        zhejiaProps?.let { props ->
+            create("zhejia") {
+                storeFile = expandHome(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
     }
+
+    // 渠道与密钥的对应关系写在这里（signingConfigs 在上面才创建好，写在渠道块里取不到）。
+    // AGP 里 buildType 上的 signingConfig 优先级高于渠道，所以 buildTypes.release 不设。
+    //
+    // ⚠️ direct 是官网直装包的最终签名，**永远不要改**：换了签名老用户无法覆盖安装。
+    // play 是 Play 的上传密钥，已重置为柘家那把；用个人那把签的 AAB 会被 Play 拒收。
+    productFlavors.getByName("play").signingConfig = signingConfigs.findByName("zhejia")
+    productFlavors.getByName("oss").signingConfig = signingConfigs.findByName("release")
+    productFlavors.getByName("direct").signingConfig = signingConfigs.findByName("release")
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // 有 keystore.properties 时自动签名上传包；否则未签名（仅本地验证 R8）
-            signingConfig = signingConfigs.findByName("release")
+            // 签名按渠道给（见 productFlavors）：AGP 里 buildType 上的 signingConfig 优先级高于渠道，
+            // 在这里赋值会把所有渠道一起盖掉，所以这里不设。
         }
         debug {
             applicationIdSuffix = ".debug"

@@ -11,9 +11,11 @@ object OAuthConfig {
     /** 官方 Client 为 PKCE 公开客户端（非机密）；oss 风味默认空串。 */
     val clientId: String = BuildConfig.OAUTH_CLIENT_ID
 
-    const val CALLBACK_SCHEME = "orangecloud"
-    const val CALLBACK_HOST = "oauth"
-    const val REDIRECT_URI = "https://o-c.do/oauth/callback"
+    /** 自定义 scheme/host 可由 local.properties 注入，以便 fork 与官方应用并存。 */
+    val CALLBACK_SCHEME: String = BuildConfig.OAUTH_CALLBACK_SCHEME
+    val CALLBACK_HOST: String = BuildConfig.OAUTH_CALLBACK_HOST
+    /** Cloudflare OAuth Client 注册的 HTTPS relay URL。oss 必须使用自建 relay。 */
+    val REDIRECT_URI: String = BuildConfig.OAUTH_REDIRECT_URI
 
     const val AUTHORIZATION_URL = "https://dash.cloudflare.com/oauth2/auth"
     /** 网页登出端点：添加账号时先登出再续跳授权页，避免复用上一个登录态（支持 ?to= 续跳）。 */
